@@ -60,13 +60,25 @@ runtests() {
   ./a.out $DIR --port $PORT --ipv6 --addr 127.0.0.1 2>&1 | grep -F "malformed --addr argument" > /dev/null || exit 1
 
   echo "===> run tests against a basic instance (generates darkhttpd.gcda)"
-  ./a.out $DIR --port $PORT --addr $ADDR --log test.out.log \
-    >>test.out.stdout 2>>test.out.stderr &
-  PID=$!
+  if [[ $(id -u) -eq 0 ]]; then
+    touch test.out.log darkhttpd.gcda && chmod 0777 test.out.log darkhttpd.gcda;
+    sudo -u nobody ./a.out $DIR --port $PORT --addr $ADDR --log test.out.log >>test.out.stdout 2>>test.out.stderr &
+    SUDO_PID=$!
+    sleep 1;
+    PID=$(pgrep -P "$SUDO_PID" | head -n1) || true
+    [[ -n $PID ]] || exit 1
+  else
+    ./a.out $DIR --port $PORT --addr $ADDR --log test.out.log >>test.out.stdout 2>>test.out.stderr &
+    PID=$!
+  fi
   kill -0 $PID || exit 1
   $PYTHON test.py || exit 1
   kill $PID
-  wait $PID
+  if [[ -n $SUDO_PID ]]; then
+    wait $SUDO_PID
+  else
+    wait $PID
+  fi
 
   echo "===> run --forward tests"
   ./a.out $DIR --port $PORT --addr $ADDR \
